@@ -1,0 +1,147 @@
+version: '3.8'
+
+services:
+  loki-redis:
+    image: bitnami/redis:latest
+    restart: unless-stopped
+    container_name: loki-redis
+    environment:
+      ALLOW_EMPTY_PASSWORD: "yes"
+    ports:
+      - 6379
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  loki-consul:
+    container_name: loki-consul
+    image: consul:1.9
+    command: agent -log-level=info -dev -client 0.0.0.0
+    restart: unless-stopped
+    volumes:
+      - $DOCKER_VOLUME_PATH/loki/consul/config:/consul/config
+      - $DOCKER_VOLUME_PATH/loki/consul/data:/consul/data
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  loki-distributor:
+    image: grafana/loki:2.2.1
+    container_name: loki-distributor
+    restart: unless-stopped
+    ports:
+      - 3100:3100
+    depends_on:
+      - loki-redis
+      - loki-consul
+    volumes:
+      - $DOCKER_VOLUME_PATH/loki/configs/loki/consul_config.yaml:/etc/loki/config.yaml
+    command: -config.file=/etc/loki/config.yaml -target=distributor
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  loki-querier:
+    image: grafana/loki:2.2.1
+    container_name: loki-querier
+    restart: unless-stopped
+    ports:
+      - 3100
+    depends_on:
+      - loki-redis
+      - loki-consul
+    volumes:
+      - $DOCKER_VOLUME_PATH/loki/configs/loki/consul_config.yaml:/etc/loki/config.yaml
+    command: -config.file=/etc/loki/config.yaml -target=querier
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  loki-ingester:
+    image: grafana/loki:2.2.1
+    container_name: loki-ingester
+    restart: unless-stopped
+    ports:
+      - 3100
+    depends_on:
+      - loki-redis
+      - loki-consul
+    volumes:
+      - $DOCKER_VOLUME_PATH/loki/configs/loki/consul_config.yaml:/etc/loki/config.yaml
+    command: -config.file=/etc/loki/config.yaml -target=ingester
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  loki-table-manager:
+    image: grafana/loki:2.2.1
+    container_name: loki-table-manager
+    restart: unless-stopped
+    ports:
+      - 3100
+    depends_on:
+      - loki-redis
+      - loki-consul
+    volumes:
+      - $DOCKER_VOLUME_PATH/loki/configs/loki/consul_config.yaml:/etc/loki/config.yaml
+    command: -config.file=/etc/loki/config.yaml -target=table-manager
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  promtail:
+    image:  grafana/promtail:latest
+    container_name: promtail
+    restart: unless-stopped
+    volumes:
+      - $DOCKER_VOLUME_PATH/loki/configs/promtail/promtail-config.yaml:/etc/promtail/docker-config.yaml
+      - /var/log:/var/log
+      - /var/lib/docker/:/var/lib/docker:ro
+    command: -config.file=/etc/promtail/docker-config.yaml
+    depends_on:
+      - loki-ingester
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  fluent-bit:
+    image: grafana/fluent-bit-plugin-loki:latest
+    container_name: fluent-bit
+    environment:
+      - LOKI_URL=http://loki-distributor:3100/loki/api/v1/push
+    volumes:
+      - $DOCKER_VOLUME_PATH/loki/configs/fluentbit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+networks:
+  public:
+    name: public

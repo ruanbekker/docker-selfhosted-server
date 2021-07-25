@@ -16,6 +16,30 @@ services:
       options:
         max-size: "1m"
 
+  loki-minio:
+    image: minio/minio:latest
+    container_name: loki-minio
+    volumes:
+      - $DOCKER_VOLUME_PATH/loki/minio/data:/data
+    env_file: .env
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-EXAMPLEACCESSKEY}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-EXAMPLEACCESSSECRET}
+    command: server /data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+
   loki-consul:
     container_name: loki-consul
     image: consul:1.9
@@ -40,6 +64,7 @@ services:
     depends_on:
       - loki-redis
       - loki-consul
+      - loki-minio
     volumes:
       - $DOCKER_VOLUME_PATH/loki/configs/loki/consul_config.yaml:/etc/loki/config.yaml
     command: -config.file=/etc/loki/config.yaml -target=distributor
@@ -59,6 +84,7 @@ services:
     depends_on:
       - loki-redis
       - loki-consul
+      - loki-minio
     volumes:
       - $DOCKER_VOLUME_PATH/loki/configs/loki/consul_config.yaml:/etc/loki/config.yaml
     command: -config.file=/etc/loki/config.yaml -target=querier
@@ -78,6 +104,7 @@ services:
     depends_on:
       - loki-redis
       - loki-consul
+      - loki-minio
     volumes:
       - $DOCKER_VOLUME_PATH/loki/configs/loki/consul_config.yaml:/etc/loki/config.yaml
     command: -config.file=/etc/loki/config.yaml -target=ingester
@@ -97,6 +124,7 @@ services:
     depends_on:
       - loki-redis
       - loki-consul
+      - loki-minio
     volumes:
       - $DOCKER_VOLUME_PATH/loki/configs/loki/consul_config.yaml:/etc/loki/config.yaml
     command: -config.file=/etc/loki/config.yaml -target=table-manager

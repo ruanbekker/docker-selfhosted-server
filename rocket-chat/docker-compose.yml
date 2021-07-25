@@ -1,0 +1,128 @@
+version: "3.7"
+
+services:
+  rocketchat:
+    image: rocketchat/rocket.chat:latest
+    container_name: rocketchat
+    restart: unless-stopped
+    command: >
+      bash -c
+        "for i in `seq 1 30`; do
+          INSTANCE_IP=$$(hostname -i) node main.js &&
+          s=$$? && break || s=$$?;
+          echo \"Tried $$i times. Waiting 5 secs...\";
+          sleep 5;
+        done; (exit $$s)"
+    volumes:
+      - ${DOCKER_VOLUME_PATH}/rocketchat/app/data/uploads:/app/uploads
+      - /tmp:/tmp
+    environment:
+      - PORT=3000
+      - ROOT_URL=http://chat.$DOMAIN
+      - MONGO_URL=mongodb://rocketchat-mongo:27017/rocketchat
+      - MONGO_OPLOG_URL=mongodb://rocketchat-mongo:27017/local
+    ports:
+      - 9458:9458 # prometheus
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rocketchat-app.rule=Host(`chat.$DOMAIN`)"
+      - "traefik.http.routers.rocketchat-app.entrypoints=https"
+      - "traefik.http.routers.rocketchat-app.tls.certresolver=dns-cloudflare"
+      - "com.centurylinklabs.watchtower.enable=true"
+    depends_on:
+      - rocketchat-mongo
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  rocketchat-mongo:
+    image: mongo:4.0
+    container_name: rocketchat-mongo
+    restart: unless-stopped
+    command: mongod --oplogSize 128 --replSet rs0
+    volumes:
+      - ${DOCKER_VOLUME_PATH}/rocketchat/mongo/data/db:/data/db
+      - ${DOCKER_VOLUME_PATH}/rocketchat/mongo/data/backups:/dump
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  rocketchat-mongo-init-replica:
+    image: mongo:4.0
+    container_name: rocketchat-mono-init-replica
+    command: >
+      bash -c
+        "for i in `seq 1 30`; do
+          mongo rocketchat-mongo/rocketchat --eval \"
+            rs.initiate({
+              _id: 'rs0',
+              members: [ { _id: 0, host: 'localhost:27017' } ]})\" &&
+          s=$$? && break || s=$$?;
+          echo \"Tried $$i times. Waiting 5 secs...\";
+          sleep 5;
+        done; (exit $$s)"
+    depends_on:
+      - rocketchat-mongo
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  rocketchat-hubot:
+    image: rocketchat/hubot-rocketchat:v1.0.11
+    container_name: rocketchat-hubot
+    restart: unless-stopped
+    environment:
+      - MONGODB_URL=mongodb://rocketchat-mongo:27017/hubot-brain
+      - ROCKETCHAT_URL=rocketchat:3000
+      - ROCKETCHAT_ROOM=GENERAL
+      - ROCKETCHAT_USER=${ROCKETCHAT_USER}
+      - ROCKETCHAT_PASSWORD=${ROCKETCHAT_PASSWORD}
+      - BOT_NAME=${ROCKETCHAT_BOT_NAME}
+      - RESPOND_TO_DM=true
+      - LISTEN_ON_ALL_PUBLIC=true
+      - EXTERNAL_SCRIPTS=${ROCKETCHAT_EXTERNAL_SCRIPTS}
+      - TZ=${TZ}
+    depends_on:
+      - rocketchat
+    volumes:
+      - ${DOCKER_VOLUME_PATH}/rocketchat/hubot/data/hubotscripts:/home/hubot/scripts
+    ports:
+      - 3011:8081
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  rocketchat-mongo-express:
+    image: mongo-express
+    container_name: roccketchat-mongo-express
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://rocketchat-mongo:27017/
+      - ME_CONFIG_MONGODB_ENABLE_ADMIN=true
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=$ME_CONFIG_BASICAUTH_PASSWORD
+    ports:
+      - 18087:8081
+    networks:
+      - public
+    depends_on:
+      - rocketchat-mongo
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+networks:
+  public:
+    name: public

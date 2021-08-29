@@ -8,3 +8,23 @@ steps:
   image: busybox
   commands:
   - echo hi
+
+- name: gotify
+  image: fredix/drone-gotify
+  settings:
+    gotifytoken:
+      from_secret: plugin_gotifytoken
+    gotifyendpoint:
+      from_secret: plugin_gotifyendpoint
+    gotifytitle:
+      from_secret: plugin_gotifytitle
+    gotifypriority:
+      from_secret: plugin_gotifypriority
+    message: >
+      {{#success build.status}}
+        build {{build.number}} succeeded on {{repo.name}}. Good job {{build.author}}  {{build.link}}
+      {{else}}
+        build {{build.number}} failed on {{repo.name}}. Fix me please {{build.author}}  {{build.link}}
+      {{/success}}
+  when:
+    status: [ success, failure ]

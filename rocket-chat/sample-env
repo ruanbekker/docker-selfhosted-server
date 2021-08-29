@@ -1,0 +1,10 @@
+DOMAIN=
+ME_CONFIG_BASICAUTH_PASSWORD=
+DOCKER_VOLUME_PATH=.
+ROCKETCHAT_ROOM=GENERAL
+ROCKETCHAT_USER=hubot
+ROCKETCHAT_PASSWORD=
+ROCKETCHAT_BOT_NAME=hubot
+# https://developer.rocket.chat/guides/bots-guides/create-and-run-a-bot/run-a-hubot-bot
+ROCKETCHAT_EXTERNAL_SCRIPTS=hubot-help,hubot-diagnostics,hubot-seen,hubot-links,hubot-pugme,hubot-memes,hubot-isup
+TZ=/usr/share/zoneinfo/Africa/Johannesburg

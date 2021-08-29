@@ -1,0 +1,80 @@
+# resource
+# https://github.com/JulianRunnels/Bitwarden_Self_Host/blob/master/docker-compose.yml
+# https://medium.com/swlh/set-up-your-own-personal-password-vault-313d76374046
+
+# to use grafana loki for logging:
+#    logging:
+#      driver: loki
+#      options:
+#        loki-url: http://$SERVER_IP:3100/loki/api/v1/push
+#        loki-external-labels: job=dockerlogs
+
+version: "3.8"
+
+services:
+  bitwarden-frontend:
+    image: nginx:1.15-alpine
+    container_name: bitwarden-frontend
+    restart: unless-stopped
+    volumes:
+      - $DOCKER_VOLUME_PATH/bitwarden/frontend/bitwarden.conf:/etc/nginx/conf.d/bitwarden.conf
+    networks:
+      - public
+    depends_on:
+      - bitwarden-backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bitwarden.rule=Host(`bitwarden.$DOMAIN`)"
+      - "traefik.http.routers.bitwarden.entrypoints=https"
+      - "traefik.http.routers.bitwarden.tls.certresolver=dns-cloudflare"
+      - "traefik.http.routers.bitwarden.service=bitwarden-service"
+      - "traefik.http.services.bitwarden-service.loadbalancer.server.port=80"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  bitwarden-backend:
+    image: vaultwarden/server:latest
+    container_name: bitwarden-backend
+    restart: unless-stopped
+    volumes:
+      - $DOCKER_VOLUME_PATH/bitwarden/backend/data:/data
+    environment:
+      - WEBSOCKET_ENABLED=true
+      - SIGNUPS_ALLOWED=false
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  bitwarden-backup:
+    image: bruceforce/bw_backup:latest
+    container_name: bitwarden-backup
+    restart: unless-stopped
+    depends_on:
+      - bitwarden-backend
+    volumes:
+      - $DOCKER_VOLUME_PATH/bitwarden/backend/data:/data
+      - $DOCKER_VOLUME_PATH/bitwarden/backend/backup:/backup
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - DB_FILE=/data/db.sqlite3
+      - BACKUP_FILE=/backup/backup.sqlite3
+      - CRON_TIME=0 1 * * *
+      - TIMESTAMP=false
+      - UID=0
+      - GID=0
+    networks:
+      - public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+networks:
+  public:
+    name: public
